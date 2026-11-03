@@ -1,0 +1,31 @@
+# QA Knowledge Base
+
+## Manual Testing
+Manual testing is a software testing approach in which a tester executes test cases without using automation scripts. Testers compare actual results with expected results and report defects when the results differ.
+
+## Regression Testing
+Regression testing verifies that existing functionality still works after code changes, bug fixes, configuration changes, or new feature development. It helps identify unintended side effects introduced by changes.
+
+## Automation Testing
+Automation testing uses scripts and tools to execute test cases automatically. It is useful for repetitive tests, regression suites, and frequent test execution. Automation requires maintenance when application behaviour or interfaces change.
+
+## API Testing
+API testing validates application programming interfaces by sending requests and checking responses. Testers verify status codes, response bodies, headers, authentication, validation, error handling, and response times.
+
+## Bug Life Cycle
+The bug life cycle describes the stages a defect moves through, such as New, Assigned, In Progress, Fixed, Retest, Verified, and Closed. If the defect persists during retesting, it may be reopened. Exact statuses vary between teams and tools.
+
+## Smoke Testing
+Smoke testing is a preliminary set of checks used to determine whether a software build is stable enough for further testing. It focuses on critical functionality.
+
+## Sanity Testing
+Sanity testing is a focused check that verifies whether a particular change or bug fix behaves as expected. It is narrower in scope than a full regression suite.
+
+## Test Case
+A test case defines the preconditions, steps, test data, and expected results needed to verify a particular behaviour or requirement.
+
+## Defect Severity and Priority
+Severity describes the impact of a defect on the system or users. Priority describes how urgently the defect should be fixed. A defect can have high severity but a different priority depending on business context.
+
+## Selenium
+Selenium WebDriver is a browser automation tool used to automate web application testing. It supports browser interactions such as locating elements, clicking, typing, and validating page behaviour.
