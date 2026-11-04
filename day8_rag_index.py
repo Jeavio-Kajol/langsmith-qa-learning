@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from langchain_core.documents import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter
@@ -103,9 +104,33 @@ def retrieve_documents(
     vector_store,
     question,
     k=3,
+    max_score_gap=0.05,
 ):
 
-    return vector_store.similarity_search_with_score(
+    results = vector_store.similarity_search_with_score(
         question,
         k=k,
     )
+
+    if not results:
+        return []
+
+    topic_text = re.sub(r"\bwithout\s+\w+", "", question.lower())
+    question_terms = set(re.findall(r"\w+", topic_text))
+    named_results = []
+    for document, score in results:
+        section = getattr(document, "metadata", {}).get("section", "")
+        section_terms = set(re.findall(r"\w+", section.lower())) - {"testing", "and"}
+        if section_terms and section_terms <= question_terms:
+            named_results.append((document, score))
+
+    if named_results:
+        return named_results
+
+    minimum_score = float(results[0][1]) - max_score_gap
+
+    return [
+        (document, score)
+        for document, score in results
+        if float(score) >= minimum_score
+    ]

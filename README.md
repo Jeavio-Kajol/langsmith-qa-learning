@@ -3,6 +3,11 @@
 A QA chatbot and RAG application with a human-reviewed golden dataset and
 a Day 10 evaluation gate using Groq, Hugging Face embeddings, and LangSmith.
 
+## Team Demo
+
+Use [DEMO_GUIDE.md](DEMO_GUIDE.md) for a beginner-friendly 30-minute walkthrough,
+speaker notes, architecture diagrams, demo commands, and current completion status.
+
 ## Local Setup
 
 Use Python 3.12 for compatibility with the GitHub Actions environment.

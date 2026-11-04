@@ -9,6 +9,8 @@ with patch.dict(os.environ, {"GROQ_API_KEY": "offline-test", "LANGSMITH_TRACING"
     import day10_eval_runner as runner
     import day8_rag_app as app
 
+from day8_rag_index import retrieve_documents
+
 
 class RAGEvalRunnerTests(unittest.TestCase):
     def setUp(self):
@@ -16,6 +18,67 @@ class RAGEvalRunnerTests(unittest.TestCase):
         runner.judge_errors.clear()
         runner.target_errors.clear()
         runner.provider_error = None
+
+    def test_retrieval_drops_distant_chunks(self):
+        store = Mock()
+        store.similarity_search_with_score.return_value = [
+            ("relevant", 0.85), ("unrelated", 0.60), ("unrelated", 0.50),
+        ]
+        self.assertEqual(retrieve_documents(store, "test"), [("relevant", 0.85)])
+        store.similarity_search_with_score.assert_called_once_with("test", k=3)
+
+    def test_retrieval_preserves_close_comparison_topics(self):
+        store = Mock()
+        store.similarity_search_with_score.return_value = [
+            ("manual", 0.75), ("automation", 0.70), ("unrelated", 0.30),
+        ]
+        self.assertEqual(
+            retrieve_documents(store, "compare manual and automation"),
+            [("manual", 0.75), ("automation", 0.70)],
+        )
+
+    def test_retrieval_handles_empty_index(self):
+        store = Mock()
+        store.similarity_search_with_score.return_value = []
+        self.assertEqual(retrieve_documents(store, "test"), [])
+
+    def test_retrieval_excludes_unnamed_neighboring_topic(self):
+        regression = SimpleNamespace(metadata={"section": "Regression Testing"})
+        sanity = SimpleNamespace(metadata={"section": "Sanity Testing"})
+        store = Mock()
+        store.similarity_search_with_score.return_value = [(regression, 0.70), (sanity, 0.68)]
+        self.assertEqual(
+            retrieve_documents(store, "What is regression testing?"),
+            [(regression, 0.70)],
+        )
+
+    def test_retrieval_preserves_explicit_three_topic_comparison(self):
+        sanity = SimpleNamespace(metadata={"section": "Sanity Testing"})
+        regression = SimpleNamespace(metadata={"section": "Regression Testing"})
+        smoke = SimpleNamespace(metadata={"section": "Smoke Testing"})
+        results = [(sanity, 0.80), (regression, 0.60), (smoke, 0.55)]
+        store = Mock()
+        store.similarity_search_with_score.return_value = results
+        self.assertEqual(
+            retrieve_documents(store, "How do regression testing, smoke testing, and sanity testing differ?"),
+            results,
+        )
+
+    def test_retrieval_tightens_gap_for_unnamed_topics(self):
+        store = Mock()
+        store.similarity_search_with_score.return_value = [("relevant", 0.85), ("weaker", 0.75)]
+        self.assertEqual(retrieve_documents(store, "test"), [("relevant", 0.85)])
+
+    def test_negated_topic_does_not_override_semantic_matches(self):
+        automation = SimpleNamespace(metadata={"section": "Automation Testing"})
+        manual = SimpleNamespace(metadata={"section": "Manual Testing"})
+        results = [(automation, 0.80), (manual, 0.78)]
+        store = Mock()
+        store.similarity_search_with_score.return_value = results
+        self.assertEqual(
+            retrieve_documents(store, "Which testing approach compares results without automation scripts?"),
+            results,
+        )
 
     def test_daily_quota_does_not_retry(self):
         for quota in ("tokens per day", "requests per day"):
@@ -63,6 +126,30 @@ class RAGEvalRunnerTests(unittest.TestCase):
         self.assertEqual(len(results), 4)
         self.assertEqual(runner.metric_scores["hallucination_rate"], [0.0])
         self.assertFalse(runner.judge_errors)
+
+    def test_empty_judge_response_retries_once(self):
+        responses = [
+            SimpleNamespace(content=""),
+            SimpleNamespace(content='{"context_precision": 0.9, "faithfulness": 1, "hallucination_rate": 0, "answer_relevance": 1}'),
+        ]
+        with patch.object(runner, "invoke_with_retry", side_effect=responses) as invoke, redirect_stdout(io.StringIO()):
+            results = runner.combined_llm_judge_evaluator(
+                {"question": "test"}, {"answer": "test"}, {},
+            )
+        self.assertEqual(invoke.call_count, 2)
+        self.assertEqual(len(results), 4)
+        self.assertEqual(runner.metric_scores["faithfulness"], [1.0])
+        self.assertFalse(runner.judge_errors)
+
+    def test_invalid_judge_response_still_blocks_gate(self):
+        with patch.object(runner, "invoke_with_retry", return_value=SimpleNamespace(content="not JSON")) as invoke, redirect_stdout(io.StringIO()):
+            result = runner.combined_llm_judge_evaluator(
+                {"question": "test"}, {"answer": "test"}, {},
+            )
+        self.assertEqual(invoke.call_count, 2)
+        self.assertEqual(result["key"], "judge_error")
+        self.assertEqual(len(runner.judge_errors), 1)
+        self.assertFalse(runner.metric_scores)
 
     def test_gate_thresholds_and_state_reset(self):
         for score, hallucination, expected in (

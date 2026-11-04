@@ -32,8 +32,9 @@ JUDGE_LLM = ChatGroq(
         os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
     ),
     temperature=0,
-    max_tokens=1024,
+    max_tokens=2048,
     max_retries=0,
+    model_kwargs={"response_format": {"type": "json_object"}},
 )
 
 THRESHOLDS = {
@@ -297,12 +298,18 @@ Required JSON format:
 """
 
     try:
-        response = invoke_with_retry(
-            JUDGE_LLM,
-            prompt,
-        )
-
-        result = extract_json(response.content)
+        for attempt in range(2):
+            response = invoke_with_retry(
+                JUDGE_LLM,
+                prompt,
+            )
+            try:
+                result = extract_json(response.content)
+                break
+            except ValueError:
+                if attempt == 1:
+                    raise
+                print("Judge returned invalid JSON. Retrying once...")
 
         scores = {
             "context_precision": validate_score(
