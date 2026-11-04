@@ -1,5 +1,10 @@
 # Day 8 – RAG Application, Manual Testing & LangSmith Trace Comparison
 
+**Historical evidence:** These results describe the 31 October implementation,
+not a fresh test of the current code. The current index uses ten topic chunks;
+the active RAG app now validates input and separates system instructions from
+user data. Repeat the six scenarios before claiming they pass on this version.
+
 **Project:** LangSmith QA Learning  
 **Day:** 8  
 **Date:** 31 October 2026  

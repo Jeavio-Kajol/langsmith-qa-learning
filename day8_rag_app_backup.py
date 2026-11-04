@@ -11,7 +11,6 @@ from day8_rag_index import (
 
 load_dotenv()
 
-# Use the same Groq model as the existing project.
 llm = ChatGroq(
     model="openai/gpt-oss-20b",
     temperature=0,

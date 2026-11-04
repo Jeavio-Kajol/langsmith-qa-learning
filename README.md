@@ -3,10 +3,37 @@
 A QA chatbot and RAG application with a human-reviewed golden dataset and
 a Day 10 evaluation gate using Groq, Hugging Face embeddings, and LangSmith.
 
+## Phase 2 Requirement Check
+
+Groq is an instructor-approved substitute because OpenAI API access is not
+available for this project. The written learning plan specifies `gpt-4o-mini`;
+the instructor approved using Groq instead, as confirmed on 4 November 2026.
+Free ChatGPT access does not supply OpenAI API credits.
+All active LLM calls remain on Groq; no OpenAI API key is required to run them.
+
+| Requirement | Current Evidence / Remaining Work |
+| --- | --- |
+| Day 6: traced chat | Implemented, including tags and session metadata. Verify UI filtering, run comparisons, and a human feedback score in LangSmith. |
+| Day 7: two free evaluators and an AI judge | Implemented; good/bad/edge keyword examples tested offline. Human review of evaluator logic and live experiment failure analysis still need evidence. |
+| Day 8: traced RAG and manual matrix | Indexing, retrieval, generation, input bounds, system instructions, and an interactive entry point are implemented. The manual report is historical; rerun the six scenarios for Chat and RAG after changes. Oversized input is rejected safely, not silently truncated. |
+| Day 9: Chat 30+ and RAG 50+ | Local definitions contain 30 Chat and 56 RAG examples with uploaders. Confirm cloud counts, human review of every reference, and the approved v1 dataset in LangSmith. A verification flag alone is not proof of review. |
+| Day 10: reusable runner and core checks | `EvalConfig` and `RAGEvalRunner` are implemented. Four core callbacks cover recall, faithfulness, hallucination, and relevance, plus a refusal callback. Precision is returned with faithfulness; one shared AI judgment per example supplies four scores. |
+| Day 10: quality gate | Strict plan targets use `>` for higher-is-better metrics and `<` for hallucinations. Missing data, provider/judge/target errors, and diagnostic-only subsets cannot produce a full CI pass. 30 offline tests pass; live quality is not yet verified. |
+| Day 10: dashboards and PR blocking | Workflow exists. Configure/verify LangSmith dashboards and metric alerts, and require the GitHub checks in branch protection. A failing job alone does not block merging. |
+| Day 10: regression agreement | Proposed policy is below. Team approval, a passing baseline, and selection of the critical smoke cases remain outstanding. Automated relative-baseline gates are not implemented. |
+
+The framework's core structure is in place, but the complete Phase 2 deliverables
+cannot be marked verified from offline tests alone. No paid evaluations or
+account-setting changes were made during this check. Earlier Groq experiments
+and manual results are historical evidence, not a passing baseline for the
+current implementation. The demo deck is a recorded explanation from before
+this requirement check; use this section for the current status.
+
 ## Team Demo
 
-Use [DEMO_GUIDE.md](DEMO_GUIDE.md) for a beginner-friendly 30-minute walkthrough,
-speaker notes, architecture diagrams, demo commands, and current completion status.
+Use [DEMO_GUIDE.md](DEMO_GUIDE.md) for a plain-language introduction, visual file
+map, setup, and short demo. Present [DEMO_SLIDES.pptx](DEMO_SLIDES.pptx) for the
+matching 11-slide main story, with speaker notes and 5 optional reference slides.
 
 ## Local Setup
 
@@ -42,7 +69,8 @@ python day10_eval_runner.py
 
 Offline tests do not call external services. The limited run is diagnostic,
 not a full CI pass: it may have no examples for a category and fail with
-`NO VALID DATA`. The full run generates answers and uses an LLM judge, so
+`NO VALID DATA`. Even a complete set of passing subset scores is diagnostic
+only and returns exit code 1. The full run generates answers and uses an LLM judge, so
 it consumes Groq tokens and writes a LangSmith experiment.
 
 The pipeline reports context recall, context precision, faithfulness,
@@ -51,6 +79,9 @@ meet its individual threshold in `day10_eval_runner.py`. Missing scores,
 generation errors, judge errors, and exhausted quota fail the gate with
 exit code 1. Short-term rate limits retry; daily quota exhaustion stops
 further model calls. Do not lower thresholds to hide provider errors.
+
+`python day8_rag_app.py` starts the active interactive RAG application.
+Do not use the historical backup as the current implementation.
 
 Check usage and model limits at https://console.groq.com/. A provider retry
 delay indicates when that request may fit again, not when enough quota is

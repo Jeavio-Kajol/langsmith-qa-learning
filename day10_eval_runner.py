@@ -3,7 +3,9 @@ import json
 import os
 import re
 from collections import defaultdict
+from dataclasses import dataclass, field
 from itertools import islice
+from typing import Callable
 
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
@@ -12,7 +14,7 @@ from langsmith import Client, evaluate
 from day8_rag_app import (
     build_knowledge_index,
     invoke_with_retry,
-    is_daily_quota_error,
+    is_provider_quota_error,
     run_rag,
 )
 
@@ -27,10 +29,7 @@ DATASET_NAME = "rag-golden-v1"
 EXPERIMENT_PREFIX = "day10-rag-eval-fixed"
 
 JUDGE_LLM = ChatGroq(
-    model=os.getenv(
-        "GROQ_JUDGE_MODEL",
-        os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
-    ),
+    model=os.getenv("GROQ_JUDGE_MODEL", os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")),
     temperature=0,
     max_tokens=2048,
     max_retries=0,
@@ -52,6 +51,7 @@ metric_scores = defaultdict(list)
 judge_errors = []
 target_errors = []
 provider_error = None
+judge_feedback_cache = {}
 
 
 # --------------------------------------------------
@@ -168,6 +168,9 @@ def context_recall_evaluator(
     reference_outputs,
     example=None,
 ):
+    if not str(outputs.get("answer", "")).strip():
+        return {"key": "context_recall_error", "score": None, "comment": "No generated answer; target failed."}
+
     expected_phrases = get_expected_phrases(
         reference_outputs
     )
@@ -176,7 +179,7 @@ def context_recall_evaluator(
     if not expected_phrases:
         return {
             "key": "context_recall_not_applicable",
-            "score": 1.0,
+            "score": None,
             "comment": "No expected context phrases were provided.",
         }
 
@@ -345,7 +348,7 @@ Required JSON format:
     except Exception as error:
         error_message = str(error)
 
-        if is_daily_quota_error(error):
+        if is_provider_quota_error(error):
             provider_error = error_message
 
         judge_errors.append(error_message)
@@ -371,6 +374,9 @@ def no_answer_evaluator(
     reference_outputs,
     example=None,
 ):
+    if not str(outputs.get("answer", "")).strip():
+        return {"key": "no_answer_error", "score": None, "comment": "No generated answer; target failed."}
+
     category = get_category(example)
 
     answer = normalize_text(
@@ -381,7 +387,7 @@ def no_answer_evaluator(
     if category != "out_of_scope":
         return {
             "key": "no_answer_not_applicable",
-            "score": 1.0,
+            "score": None,
             "comment": "This example is not categorized as out_of_scope.",
         }
 
@@ -394,10 +400,7 @@ def no_answer_evaluator(
         "information is not available",
     ]
 
-    correctly_abstained = any(
-        phrase in answer
-        for phrase in abstention_phrases
-    )
+    correctly_abstained = answer in abstention_phrases
 
     score = 1.0 if correctly_abstained else 0.0
 
@@ -413,20 +416,93 @@ def no_answer_evaluator(
         ),
     }
 
+def select_judge_feedback(inputs, outputs, reference_outputs, example, keys):
+    cache_key = (
+        str(getattr(example, "id", id(outputs))),
+        json.dumps(inputs, sort_keys=True, default=str),
+        json.dumps(outputs, sort_keys=True, default=str),
+    )
+    if cache_key not in judge_feedback_cache:
+        judge_feedback_cache[cache_key] = combined_llm_judge_evaluator(
+            inputs, outputs, reference_outputs, example,
+        )
+    feedback = judge_feedback_cache[cache_key]
+    if isinstance(feedback, dict):
+        return {"key": f"{keys[0]}_error", "score": None, "comment": feedback["comment"]}
+    selected = [result for result in feedback if result["key"] in keys]
+    return selected[0] if len(selected) == 1 else selected
 
-# --------------------------------------------------
-# RAG TARGET FUNCTION
-# --------------------------------------------------
 
-def main(dataset_name=DATASET_NAME, limit=None):
+def faithfulness_evaluator(inputs, outputs, reference_outputs, example=None):
+    return select_judge_feedback(
+        inputs, outputs, reference_outputs, example, ("faithfulness", "context_precision"),
+    )
+
+
+def hallucination_evaluator(inputs, outputs, reference_outputs, example=None):
+    return select_judge_feedback(
+        inputs, outputs, reference_outputs, example, ("hallucination_rate",),
+    )
+
+
+def answer_relevance_evaluator(inputs, outputs, reference_outputs, example=None):
+    return select_judge_feedback(
+        inputs, outputs, reference_outputs, example, ("answer_relevance",),
+    )
+
+
+@dataclass
+class EvalConfig:
+    dataset_name: str = DATASET_NAME
+    experiment_prefix: str = EXPERIMENT_PREFIX
+    evaluators: list[Callable] = field(default_factory=lambda: [
+        context_recall_evaluator,
+        faithfulness_evaluator,
+        hallucination_evaluator,
+        answer_relevance_evaluator,
+        no_answer_evaluator,
+    ])
+    app_function: Callable | None = None
+    limit: int | None = None
+
+
+class RAGEvalRunner:
+    def __init__(self, config=None):
+        self.config = config or EvalConfig()
+
+    def run(self):
+        exit_code = main(config=self.config)
+        scores = {
+            metric: sum(values) / len(values) if values else None
+            for metric in THRESHOLDS
+            for values in [metric_scores.get(metric, [])]
+        }
+        return {
+            "scores": scores,
+            "passed": exit_code == 0,
+            "judge_errors": list(judge_errors),
+            "target_errors": list(target_errors),
+            "provider_error": provider_error,
+            "diagnostic": self.config.limit is not None,
+        }
+
+    def assert_pass(self, summary):
+        if not summary["passed"] or summary["diagnostic"]:
+            raise SystemExit(1)
+
+
+def main(dataset_name=DATASET_NAME, limit=None, config=None):
     global provider_error
 
+    config = config or EvalConfig(dataset_name=dataset_name, limit=limit)
+    dataset_name, limit = config.dataset_name, config.limit
     if limit is not None and limit < 1:
         raise ValueError("limit must be a positive integer")
 
     metric_scores.clear()
     judge_errors.clear()
     target_errors.clear()
+    judge_feedback_cache.clear()
     provider_error = None
 
     data = dataset_name
@@ -439,23 +515,26 @@ def main(dataset_name=DATASET_NAME, limit=None):
             raise ValueError(f"Dataset has no examples: {dataset_name}")
         print(f"Diagnostic subset: {len(data)} examples (not a full CI run).")
 
-    print("\nBuilding RAG knowledge index...")
-
-    vector_store = build_knowledge_index()
-
-    print("\nKnowledge index ready.")
+    vector_store = None
+    if config.app_function is None:
+        print("\nBuilding RAG knowledge index...")
+        vector_store = build_knowledge_index()
+        print("\nKnowledge index ready.")
 
     def rag_target(inputs):
         global provider_error
 
         if provider_error:
+            target_errors.append(f"Skipped after provider quota failure: {provider_error}")
             raise RuntimeError(provider_error)
 
         try:
+            if config.app_function is not None:
+                return config.app_function(inputs)
             return run_rag(inputs["question"], vector_store)
         except Exception as error:
             target_errors.append(str(error))
-            if is_daily_quota_error(error):
+            if is_provider_quota_error(error):
                 provider_error = str(error)
             raise
 
@@ -465,17 +544,13 @@ def main(dataset_name=DATASET_NAME, limit=None):
 
     print("\nStarting Day 10 RAG evaluation...")
     print(f"Dataset: {dataset_name}")
-    print(f"Experiment: {EXPERIMENT_PREFIX}")
+    print(f"Experiment: {config.experiment_prefix}")
 
     results = evaluate(
         rag_target,
         data=data,
-        evaluators=[
-            context_recall_evaluator,
-            combined_llm_judge_evaluator,
-            no_answer_evaluator,
-        ],
-        experiment_prefix=EXPERIMENT_PREFIX,
+        evaluators=config.evaluators,
+        experiment_prefix=config.experiment_prefix,
         max_concurrency=1,
     )
 
@@ -558,7 +633,7 @@ def main(dataset_name=DATASET_NAME, limit=None):
             status = "PASS" if passed else "FAIL"
 
         else:
-            passed = actual >= threshold
+            passed = actual > threshold
             status = "PASS" if passed else "FAIL"
 
         if not passed:
@@ -573,7 +648,7 @@ def main(dataset_name=DATASET_NAME, limit=None):
         comparison = (
             "<"
             if metric_name == "hallucination_rate"
-            else ">="
+            else ">"
         )
 
         print(
@@ -585,6 +660,10 @@ def main(dataset_name=DATASET_NAME, limit=None):
     # Judge failures also block the CI gate.
     if judge_errors or target_errors or provider_error:
         all_passed = False
+
+    if limit is not None:
+        all_passed = False
+        print("Diagnostic subset only: a full CI pass cannot be established.")
 
     print("\n" + "=" * 55)
 

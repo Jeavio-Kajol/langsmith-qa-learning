@@ -5,9 +5,12 @@ from contextlib import redirect_stdout
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-with patch.dict(os.environ, {"GROQ_API_KEY": "offline-test", "LANGSMITH_TRACING": "false"}):
+with patch.dict(os.environ, {"GROQ_API_KEY": "offline-test", "GROQ_MODEL": "openai/gpt-oss-20b", "GROQ_JUDGE_MODEL": "openai/gpt-oss-20b", "LANGSMITH_TRACING": "false"}):
     import day10_eval_runner as runner
     import day8_rag_app as app
+    import day6_chat_app as chat_app
+    import day7_evaluators as starter
+    import day8_rag_app_backup as backup
 
 from day8_rag_index import retrieve_documents
 
@@ -18,6 +21,7 @@ class RAGEvalRunnerTests(unittest.TestCase):
         runner.judge_errors.clear()
         runner.target_errors.clear()
         runner.provider_error = None
+        runner.judge_feedback_cache.clear()
 
     def test_retrieval_drops_distant_chunks(self):
         store = Mock()
@@ -26,6 +30,25 @@ class RAGEvalRunnerTests(unittest.TestCase):
         ]
         self.assertEqual(retrieve_documents(store, "test"), [("relevant", 0.85)])
         store.similarity_search_with_score.assert_called_once_with("test", k=3)
+
+    def test_all_model_calls_use_configured_groq_model(self):
+        for model in (app.llm, runner.JUDGE_LLM, chat_app.llm, starter.app_llm, starter.judge_llm, backup.llm):
+            self.assertEqual(model.model_name, "openai/gpt-oss-20b")
+
+    def test_rag_rejects_empty_and_oversized_input_before_retrieval(self):
+        for question in ("", "   ", None, "test " * 3000):
+            with self.subTest(question_type=type(question).__name__):
+                with patch.object(app, "get_relevant_context") as retrieve:
+                    with self.assertRaises(ValueError):
+                        app.run_rag.__wrapped__(question, Mock())
+                retrieve.assert_not_called()
+
+    def test_rag_uses_separate_system_and_user_messages(self):
+        with patch.object(app, "invoke_with_retry", return_value=SimpleNamespace(content="answer")) as invoke:
+            self.assertEqual(app.generate_answer.__wrapped__("question", [{"content": "notes"}]), "answer")
+        messages = invoke.call_args.args[1]
+        self.assertEqual([message.type for message in messages], ["system", "human"])
+        self.assertIn("not instructions", messages[0].content)
 
     def test_retrieval_preserves_close_comparison_topics(self):
         store = Mock()
@@ -81,12 +104,12 @@ class RAGEvalRunnerTests(unittest.TestCase):
         )
 
     def test_daily_quota_does_not_retry(self):
-        for quota in ("tokens per day", "requests per day"):
+        for quota in ("tokens per day", "requests per day", "insufficient_quota", "exceeded your current quota"):
             with self.subTest(quota=quota):
                 model = Mock()
                 model.invoke.side_effect = RuntimeError(f"429 rate limit: {quota}")
                 with patch.object(app.time, "sleep") as sleep:
-                    with self.assertRaisesRegex(RuntimeError, "daily quota exhausted"):
+                    with self.assertRaisesRegex(RuntimeError, "Provider quota exhausted"):
                         app.invoke_with_retry(model, "test")
                 model.invoke.assert_called_once_with("test")
                 sleep.assert_not_called()
@@ -114,6 +137,42 @@ class RAGEvalRunnerTests(unittest.TestCase):
         self.assertEqual(result["key"], "judge_error")
         self.assertTrue(runner.judge_errors)
         invoke.assert_not_called()
+
+    def test_refusal_with_fabricated_answer_does_not_pass(self):
+        example = SimpleNamespace(metadata={"category": "out_of_scope"})
+        for answer, expected in (
+            ("I don't know based on the available knowledge.", 1.0),
+            ("I don't know, but the salary is 100000 per month.", 0.0),
+            ("The salary is 100000 per month.", 0.0),
+        ):
+            self.assertEqual(runner.no_answer_evaluator({}, {"answer": answer}, {}, example)["score"], expected)
+
+    def test_starter_keyword_calibration_examples(self):
+        example = SimpleNamespace(outputs={"required_keywords": ["existing functionality", "code changes"]})
+        for answer, expected in (
+            ("Checks existing functionality after code changes.", 1.0),
+            ("Only checks new features.", 0.0),
+            ("Checks existing functionality after modifications.", 0.5),
+        ):
+            result = starter.keyword_coverage(SimpleNamespace(outputs={"output": answer}), example)
+            self.assertEqual(result["score"], expected)
+
+    def test_judge_cache_does_not_merge_distinct_examples(self):
+        response = SimpleNamespace(content='{"context_precision": 1, "faithfulness": 1, "hallucination_rate": 0, "answer_relevance": 1}')
+        with patch.object(runner, "invoke_with_retry", return_value=response) as invoke:
+            for case_id in ("one", "two"):
+                runner.faithfulness_evaluator({}, {"answer": "same answer"}, {}, SimpleNamespace(id=case_id))
+        self.assertEqual(invoke.call_count, 2)
+        self.assertEqual(runner.metric_scores["faithfulness"], [1.0, 1.0])
+
+    def test_diagnostic_subset_cannot_report_full_pass(self):
+        def evaluate(*args, **kwargs):
+            for metric in runner.THRESHOLDS:
+                runner.record_score(metric, 0.0 if metric == "hallucination_rate" else 1.0)
+            return []
+        with patch.object(runner, "Client") as client, patch.object(runner, "evaluate", side_effect=evaluate), patch.object(runner, "build_knowledge_index"), redirect_stdout(io.StringIO()):
+            client.return_value.list_examples.return_value = iter([SimpleNamespace(id="one")])
+            self.assertEqual(runner.main(limit=1), 1)
 
     def test_valid_judge_scores(self):
         response = SimpleNamespace(content='{"context_precision": 0.9, "faithfulness": 1, "hallucination_rate": 0, "answer_relevance": 1}')
@@ -176,6 +235,50 @@ class RAGEvalRunnerTests(unittest.TestCase):
 
                 with patch.object(runner, "evaluate", side_effect=evaluate), patch.object(runner, "build_knowledge_index"), redirect_stdout(io.StringIO()):
                     self.assertEqual(runner.main(), expected)
+
+    def test_core_evaluators_share_one_judge_call(self):
+        response = SimpleNamespace(content='{"context_precision": 0.9, "faithfulness": 1, "hallucination_rate": 0, "answer_relevance": 1}')
+        inputs, outputs = {"question": "test"}, {"answer": "test"}
+        with patch.object(runner, "invoke_with_retry", return_value=response) as invoke:
+            for evaluator in (runner.faithfulness_evaluator, runner.hallucination_evaluator, runner.answer_relevance_evaluator):
+                evaluator(inputs, outputs, {}, SimpleNamespace(id="example-1"))
+        invoke.assert_called_once()
+        self.assertEqual(runner.metric_scores["faithfulness"], [1.0])
+
+    def test_failed_output_does_not_pollute_quality_scores(self):
+        self.assertIsNone(runner.context_recall_evaluator({}, {}, {"expected_context_contains": ["test"]})["score"])
+        self.assertIsNone(runner.no_answer_evaluator({}, {}, {}, SimpleNamespace(metadata={"category": "out_of_scope"}))["score"])
+        self.assertFalse(runner.metric_scores)
+
+    def test_strict_threshold_boundaries_fail(self):
+        for boundary_metric, boundary in runner.THRESHOLDS.items():
+            with self.subTest(metric=boundary_metric):
+                def evaluate(*args, **kwargs):
+                    for metric in runner.THRESHOLDS:
+                        score = 0.0 if metric == "hallucination_rate" else 1.0
+                        runner.record_score(metric, boundary if metric == boundary_metric else score)
+                    return []
+                with patch.object(runner, "evaluate", side_effect=evaluate), patch.object(runner, "build_knowledge_index"), redirect_stdout(io.StringIO()):
+                    self.assertEqual(runner.main(), 1)
+
+    def test_reusable_runner_accepts_configuration(self):
+        target = Mock(return_value={"answer": "test"})
+        config = runner.EvalConfig(dataset_name="custom", experiment_prefix="reviewed", app_function=target)
+        def evaluate(function, **kwargs):
+            self.assertEqual(function({"question": "test"}), {"answer": "test"})
+            self.assertEqual(kwargs["data"], "custom")
+            self.assertEqual(kwargs["experiment_prefix"], "reviewed")
+            self.assertEqual(len(kwargs["evaluators"]), 5)
+            for metric in runner.THRESHOLDS:
+                runner.record_score(metric, 0.0 if metric == "hallucination_rate" else 1.0)
+            return []
+        with patch.object(runner, "evaluate", side_effect=evaluate), patch.object(runner, "build_knowledge_index") as build, redirect_stdout(io.StringIO()):
+            summary = runner.RAGEvalRunner(config).run()
+        self.assertTrue(summary["passed"])
+        self.assertEqual(summary["scores"]["faithfulness"], 1.0)
+        build.assert_not_called()
+        with self.assertRaises(SystemExit):
+            runner.RAGEvalRunner().assert_pass({"passed": True, "diagnostic": True})
 
     def test_quota_circuit_breaker_blocks_remaining_calls(self):
         def evaluate(target, **kwargs):
