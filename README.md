@@ -1,7 +1,7 @@
 # LangSmith QA Learning
 
 A QA chatbot and RAG application with a human-reviewed golden dataset and
-a Day 10 evaluation gate using Groq, Hugging Face embeddings, and LangSmith.
+a RAG quality gate using Groq, Hugging Face embeddings, and LangSmith.
 
 ## Phase 2 Requirement Check
 
@@ -15,10 +15,10 @@ All active LLM calls remain on Groq; no OpenAI API key is required to run them.
 | --- | --- |
 | Day 6: traced chat | Implemented, including tags and session metadata. Verify UI filtering, run comparisons, and a human feedback score in LangSmith. |
 | Day 7: two free evaluators and an AI judge | Implemented; good/bad/edge keyword examples tested offline. Human review of evaluator logic and live experiment failure analysis still need evidence. |
-| Day 8: traced RAG and manual matrix | Indexing, retrieval, generation, input bounds, system instructions, and an interactive entry point are implemented. The manual report is historical; rerun the six scenarios for Chat and RAG after changes. Oversized input is rejected safely, not silently truncated. |
+| Day 8: traced RAG and manual matrix | Indexing, retrieval, generation, input bounds, system instructions, and an interactive entry point are implemented. The manual report is blank; run and record the six scenarios for Chat and RAG. Oversized input is rejected safely, not silently truncated. |
 | Day 9: Chat 30+ and RAG 50+ | Local definitions contain 30 Chat and 56 RAG examples with uploaders. Confirm cloud counts, human review of every reference, and the approved v1 dataset in LangSmith. A verification flag alone is not proof of review. |
 | Day 10: reusable runner and core checks | `EvalConfig` and `RAGEvalRunner` are implemented. Four core callbacks cover recall, faithfulness, hallucination, and relevance, plus a refusal callback. Precision is returned with faithfulness; one shared AI judgment per example supplies four scores. |
-| Day 10: quality gate | Strict plan targets use `>` for higher-is-better metrics and `<` for hallucinations. Missing data, provider/judge/target errors, and diagnostic-only subsets cannot produce a full CI pass. 30 offline tests pass; live quality is not yet verified. |
+| Day 10: quality gate | Strict plan targets use `>` for higher-is-better metrics and `<` for hallucinations. Missing data, provider/judge/target errors, and diagnostic-only subsets cannot produce a full CI pass. 35 offline tests pass; live quality is not yet verified. |
 | Day 10: dashboards and PR blocking | Workflow exists. Configure/verify LangSmith dashboards and metric alerts, and require the GitHub checks in branch protection. A failing job alone does not block merging. |
 | Day 10: regression agreement | Proposed policy is below. Team approval, a passing baseline, and selection of the critical smoke cases remain outstanding. Automated relative-baseline gates are not implemented. |
 
@@ -26,14 +26,97 @@ The framework's core structure is in place, but the complete Phase 2 deliverable
 cannot be marked verified from offline tests alone. No paid evaluations or
 account-setting changes were made during this check. Earlier Groq experiments
 and manual results are historical evidence, not a passing baseline for the
-current implementation. The demo deck is a recorded explanation from before
-this requirement check; use this section for the current status.
+current implementation. Use this section for the current verification status.
 
-## Team Demo
+## Phase 2 File Progression
 
-Use [DEMO_GUIDE.md](DEMO_GUIDE.md) for a plain-language introduction, visual file
-map, setup, and short demo. Present [DEMO_SLIDES.pptx](DEMO_SLIDES.pptx) for the
-matching 11-slide main story, with speaker notes and 5 optional reference slides.
+The Python files are named by purpose. Keep the earlier exercises to demonstrate
+how Phase 2 evolved; they are not all dependencies of the final RAG runner.
+
+```text
+chat/
+	chat_app.py                 Interactive direct chat
+	chat_eval_runner.py     Evaluate the real chat app on saved questions
+	upload_chat_dataset.py     Upload 30 reviewed chat examples
+rag/
+	rag_app.py                  Interactive knowledge-grounded assistant
+	rag_index.py                Read and search the QA notes
+	rag_eval_runner.py          Full RAG evaluation and quality gate
+	upload_rag_dataset.py       Upload 56 reviewed RAG examples
+	test_rag_eval_runner.py     Offline regression tests
+tools/
+	check_langsmith_tracing.py  Shared LangSmith connection check
+documents/
+	qa_knowledge.txt            RAG reference notes
+```
+
+The small `__init__.py` files mark `chat/` and `rag/` as Python packages;
+they do not start an application. Run commands from the project root using
+`python -m ...`, not by changing into those folders.
+
+| Learning Stage | Files | What It Adds |
+| --- | --- | --- |
+| Day 6: direct chat and tracing | [chat/chat_app.py](chat/chat_app.py), [tools/check_langsmith_tracing.py](tools/check_langsmith_tracing.py) | Ask the LLM directly; inspect the request in LangSmith. |
+| Day 7: starter evaluation | [chat/chat_eval_runner.py](chat/chat_eval_runner.py) | Score chat answers with keyword checks and an AI judge. |
+| Day 8: knowledge-grounded answers | [rag/rag_index.py](rag/rag_index.py), [rag/rag_app.py](rag/rag_app.py) | Search our QA notes before generating an answer. |
+| Day 9: reviewed test questions | [chat/upload_chat_dataset.py](chat/upload_chat_dataset.py), [rag/upload_rag_dataset.py](rag/upload_rag_dataset.py) | Define and upload separate Chat and RAG datasets. |
+| Day 10: repeatable quality gate | [rag/rag_eval_runner.py](rag/rag_eval_runner.py), [rag/test_rag_eval_runner.py](rag/test_rag_eval_runner.py) | Run RAG evaluations, enforce thresholds, and test the checking code. |
+
+Active path: `rag/rag_eval_runner.py` calls `rag/rag_app.py`, which uses `rag/rag_index.py`
+to search [documents/qa_knowledge.txt](documents/qa_knowledge.txt).
+The unused duplicate RAG backup has been removed.
+[manual_test_report.md](manual_test_report.md) is a blank, human-written test
+record, not code or an automatically generated report.
+
+### How the Chat Files Relate
+
+- [chat/chat_app.py](chat/chat_app.py) is the interactive chat application.
+- [chat/chat_eval_runner.py](chat/chat_eval_runner.py) reads saved
+	questions from `chat-golden-v1` and calls the same `chat()` function as the
+	interactive app. Python checks keywords and forbidden phrases; an AI judge
+	scores relevance. The app receives only the question, never expected answers.
+- [chat/upload_chat_dataset.py](chat/upload_chat_dataset.py) uploads the
+	30-example `chat-golden-v1` dataset used by that evaluation. Upload once if it
+	is missing; the evaluator does not create a separate starter question set.
+- [tools/check_langsmith_tracing.py](tools/check_langsmith_tracing.py) checks
+	the shared LangSmith connection by sending a small trace. It does not call an
+	LLM, read QA notes, or need either application to be running. Apps do not
+	import it; run it separately with `python -m tools.check_langsmith_tracing`.
+
+Run the connected chat test flow from the project root:
+
+```powershell
+python -m chat.upload_chat_dataset
+python -m chat.chat_eval_runner
+```
+
+The first command saves reviewed test cases; it does not generate AI answers.
+The second calls Groq for actual chat answers and relevance judgments, so it
+needs quota. In LangSmith, open Datasets > `chat-golden-v1` > Experiments and
+select the new `chat-golden-eval` experiment, or follow the printed link. Inspect
+each question, generated output, and evaluator feedback. These checks are
+quality indicators, not proof that every answer is factually correct. The chat
+runner reports scores; it is not the RAG CI threshold gate.
+
+The test dataset is not a knowledge source: the question goes to the chatbot,
+and the expected keywords stay on the checking side. RAG is different because
+it additionally retrieves QA notes and sends them to the model before answering.
+
+## Manual Test Report
+
+No script creates or fills [manual_test_report.md](manual_test_report.md).
+Start each application separately to perform the manual checks:
+
+```powershell
+python -m chat.chat_app
+python -m rag.rag_app
+```
+
+In each app, try a supported question, an out-of-domain question, an ambiguous
+question, an adversarial instruction, empty input, and a long question. Type
+`exit` to close each app. Write the input, expected behavior, observed answer,
+and your pass/fail decision in the report. Model requests use Groq quota.
+The evaluation runner saves automated results in LangSmith, not in this file.
 
 ## Local Setup
 
@@ -47,24 +130,24 @@ python -m pip install -r requirements.txt
 ```
 
 Configure `.env` using `.env.example`: `GROQ_API_KEY`, `LANGSMITH_API_KEY`,
-`LANGSMITH_TRACING=true`, and `LANGSMITH_PROJECT=qa-learning-day10`.
+`LANGSMITH_TRACING=true`, and `LANGSMITH_PROJECT=qa-learning`.
 Optional `GROQ_MODEL` and `GROQ_JUDGE_MODEL` select models with available quota.
 Never commit API keys. `.gitignore` excludes `.env`, virtual environments,
 and generated Python files; `.env.example` stays tracked.
 
 The `rag-golden-v1` dataset must exist in the LangSmith workspace associated
-with your API key. If it does not exist, upload the approved Day 9 examples:
+with your API key. If it does not exist, upload the reviewed RAG examples:
 
 ```powershell
-python day9_rag_golden_dataset.py
+python -m rag.upload_rag_dataset
 ```
 
 ## Evaluation
 
 ```powershell
-python -m unittest test_day10_eval_runner -v
-python day10_eval_runner.py --limit 3
-python day10_eval_runner.py
+python -m unittest rag.test_rag_eval_runner -v
+python -m rag.rag_eval_runner --limit 3
+python -m rag.rag_eval_runner
 ```
 
 Offline tests do not call external services. The limited run is diagnostic,
@@ -75,13 +158,12 @@ it consumes Groq tokens and writes a LangSmith experiment.
 
 The pipeline reports context recall, context precision, faithfulness,
 hallucination rate, no-answer rate, and answer relevance. Each metric must
-meet its individual threshold in `day10_eval_runner.py`. Missing scores,
+meet its individual threshold in `rag/rag_eval_runner.py`. Missing scores,
 generation errors, judge errors, and exhausted quota fail the gate with
 exit code 1. Short-term rate limits retry; daily quota exhaustion stops
 further model calls. Do not lower thresholds to hide provider errors.
 
-`python day8_rag_app.py` starts the active interactive RAG application.
-Do not use the historical backup as the current implementation.
+`python -m rag.rag_app` starts the active interactive RAG application.
 
 Check usage and model limits at https://console.groq.com/. A provider retry
 delay indicates when that request may fit again, not when enough quota is

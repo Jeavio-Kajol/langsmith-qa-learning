@@ -7,7 +7,7 @@ from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
 
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[1]
 
 DOCUMENT_PATH = (
     BASE_DIR / "documents" / "qa_knowledge.txt"

@@ -507,7 +507,7 @@ def upload_chat_dataset():
     else:
         dataset = client.create_dataset(
             dataset_name=dataset_name,
-            description="Human-verified Chat Golden Dataset - Day 9"
+            description="Human-verified Chat Golden Dataset"
         )
         print(f"Created dataset: {dataset_name}")
 
@@ -556,7 +556,7 @@ def upload_chat_dataset():
 # Validation and execution
 if __name__ == "__main__":
 
-    print("Day 9 Chat Golden Dataset - Validation")
+    print("Chat Golden Dataset - Validation")
 
     assert len(CHAT_GOLDEN_DATASET) == 30, (
         f"Expected 30 examples, found {len(CHAT_GOLDEN_DATASET)}"

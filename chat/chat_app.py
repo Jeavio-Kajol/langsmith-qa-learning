@@ -18,9 +18,9 @@ llm = ChatGroq(
 
 @traceable(
     name="chat-question-answering",
-    tags=["chat", "day6"]
+    tags=["chat", "qa-assistant"]
 )
-def chat(user_message: str, session_id: str = "day6-chat-tests") -> str:
+def chat(user_message: str, session_id: str = "chat-session") -> str:
 
     if not user_message.strip():
         raise ValueError("Question cannot be empty.")
@@ -60,7 +60,7 @@ def chat(user_message: str, session_id: str = "day6-chat-tests") -> str:
 
 if __name__ == "__main__":
 
-    print("Day 6 Chat Application")
+    print("QA Chat Application")
     print("Type 'exit' to close the application.")
 
     while True:

@@ -5,16 +5,12 @@ from langchain_groq import ChatGroq
 from langsmith import Client
 from langsmith.evaluation import evaluate
 
+from chat.chat_app import chat
+
 # Load configuration and API keys
 load_dotenv()
 
-DATASET_NAME = "qa-chat-golden-dataset"
-
-# Model used by the application being evaluated
-app_llm = ChatGroq(
-    model="openai/gpt-oss-20b",
-    temperature=0
-)
+DATASET_NAME = "chat-golden-v1"
 
 judge_llm = ChatGroq(
     model="openai/gpt-oss-20b",
@@ -34,10 +30,8 @@ def run_app(inputs: dict) -> dict:
 
     question = inputs["question"]
 
-    response = app_llm.invoke(question)
-
     return {
-        "output": str(response.content)
+        "output": chat(question)
     }
 
 
@@ -156,53 +150,14 @@ Answer:
     }
 
 
-def create_dataset_if_missing() -> None:
-    """
-    Create the dataset and its examples if the dataset doesn't exist yet.
-    Existing datasets are left unchanged.
-    """
+def main():
+    if not client.has_dataset(dataset_name=DATASET_NAME):
+        raise ValueError(
+            f"Dataset {DATASET_NAME!r} is missing. Upload the reviewed questions "
+            "first with: python -m chat.upload_chat_dataset"
+        )
 
-    if client.has_dataset(dataset_name=DATASET_NAME):
-        print(f"Dataset already exists: {DATASET_NAME}")
-        return
-
-    dataset = client.create_dataset(
-        dataset_name=DATASET_NAME,
-        description="Starter dataset for QA chatbot evaluation"
-    )
-
-    inputs = [
-        {"question": "What is LangSmith?"},
-        {"question": "Explain RAG in simple terms."},
-        {"question": "What is regression testing?"}
-    ]
-
-    outputs = [
-        {
-            "required_keywords": ["tracing", "evaluation"],
-            "forbidden_keywords": ["LangSmith is a database"]
-        },
-        {
-            "required_keywords": ["retrieval", "generation"],
-            "forbidden_keywords": ["RAG means random answer generation"]
-        },
-        {
-            "required_keywords": ["testing", "changes"],
-            "forbidden_keywords": ["regression testing guarantees zero bugs"]
-        }
-    ]
-
-    client.create_examples(
-        dataset_id=dataset.id,
-        inputs=inputs,
-        outputs=outputs
-    )
-
-    print(f"Created dataset: {DATASET_NAME}")
-
-
-if __name__ == "__main__":
-    create_dataset_if_missing()
+    print(f"Evaluating the chat app using dataset: {DATASET_NAME}")
 
     results = evaluate(
         run_app,
@@ -212,8 +167,14 @@ if __name__ == "__main__":
             hallucination_check,
             llm_relevance
         ],
-        experiment_prefix="day7-eval-run"
+        experiment_prefix="chat-golden-eval",
+        max_concurrency=1,
     )
 
     print("\nEvaluation finished.")
     print(results)
+    return results
+
+
+if __name__ == "__main__":
+    main()

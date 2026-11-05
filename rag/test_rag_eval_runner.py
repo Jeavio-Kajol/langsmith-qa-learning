@@ -6,13 +6,12 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 with patch.dict(os.environ, {"GROQ_API_KEY": "offline-test", "GROQ_MODEL": "openai/gpt-oss-20b", "GROQ_JUDGE_MODEL": "openai/gpt-oss-20b", "LANGSMITH_TRACING": "false"}):
-    import day10_eval_runner as runner
-    import day8_rag_app as app
-    import day6_chat_app as chat_app
-    import day7_evaluators as starter
-    import day8_rag_app_backup as backup
+    from rag import rag_eval_runner as runner
+    from rag import rag_app as app
+    from chat import chat_app
+    from chat import chat_eval_runner as starter
 
-from day8_rag_index import retrieve_documents
+from rag.rag_index import load_documents, retrieve_documents
 
 
 class RAGEvalRunnerTests(unittest.TestCase):
@@ -31,9 +30,51 @@ class RAGEvalRunnerTests(unittest.TestCase):
         self.assertEqual(retrieve_documents(store, "test"), [("relevant", 0.85)])
         store.similarity_search_with_score.assert_called_once_with("test", k=3)
 
+    def test_knowledge_notes_can_be_loaded(self):
+        documents = load_documents()
+        self.assertEqual(len(documents), 1)
+        self.assertIn("Regression Testing", documents[0].page_content)
+        self.assertEqual(documents[0].metadata["source"], "qa_knowledge.txt")
+
     def test_all_model_calls_use_configured_groq_model(self):
-        for model in (app.llm, runner.JUDGE_LLM, chat_app.llm, starter.app_llm, starter.judge_llm, backup.llm):
+        for model in (app.llm, runner.JUDGE_LLM, chat_app.llm, starter.judge_llm):
             self.assertEqual(model.model_name, "openai/gpt-oss-20b")
+
+    def test_chat_evaluation_calls_actual_app_with_only_question(self):
+        inputs = {"question": "What is regression testing?", "answer": "REFERENCE MUST NOT REACH APP"}
+        with patch.object(starter, "chat", return_value="generated answer") as chat:
+            self.assertEqual(starter.run_app(inputs), {"output": "generated answer"})
+        chat.assert_called_once_with(inputs["question"])
+
+    def test_chat_evaluation_preserves_interactive_app_prompt(self):
+        with patch.object(starter, "chat", side_effect=chat_app.chat.__wrapped__), patch.object(chat_app, "llm") as model:
+            model.invoke.return_value = SimpleNamespace(content="answer")
+            result = starter.run_app({"question": "test question", "reference": "HIDDEN EXPECTED ANSWER"})
+        self.assertEqual(result, {"output": "answer"})
+        messages = model.invoke.call_args.args[0]
+        self.assertEqual([message.type for message in messages], ["system", "human"])
+        self.assertEqual(messages[1].content, "test question")
+        self.assertNotIn("HIDDEN EXPECTED ANSWER", " ".join(message.content for message in messages))
+        self.assertEqual(model.invoke.call_args.kwargs["config"]["metadata"]["session_id"], "chat-session")
+
+    def test_chat_evaluation_uses_uploaded_golden_dataset(self):
+        with patch.object(starter, "client") as client, patch.object(starter, "evaluate") as evaluate, redirect_stdout(io.StringIO()):
+            client.has_dataset.return_value = True
+            self.assertIs(starter.main(), evaluate.return_value)
+        client.has_dataset.assert_called_once_with(dataset_name="chat-golden-v1")
+        self.assertIs(evaluate.call_args.args[0], starter.run_app)
+        self.assertEqual(evaluate.call_args.kwargs["data"], "chat-golden-v1")
+        self.assertEqual(evaluate.call_args.kwargs["max_concurrency"], 1)
+        self.assertEqual(evaluate.call_args.kwargs["evaluators"], [starter.keyword_coverage, starter.hallucination_check, starter.llm_relevance])
+        client.create_dataset.assert_not_called()
+
+    def test_chat_evaluation_requires_upload_without_creating_starter_data(self):
+        with patch.object(starter, "client") as client, patch.object(starter, "evaluate") as evaluate:
+            client.has_dataset.return_value = False
+            with self.assertRaisesRegex(ValueError, "python -m chat.upload_chat_dataset"):
+                starter.main()
+        client.create_dataset.assert_not_called()
+        evaluate.assert_not_called()
 
     def test_rag_rejects_empty_and_oversized_input_before_retrieval(self):
         for question in ("", "   ", None, "test " * 3000):

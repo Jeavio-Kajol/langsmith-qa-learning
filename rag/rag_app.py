@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 from langsmith import traceable
 
-from day8_rag_index import (
+from rag.rag_index import (
     load_documents,
     split_documents,
     create_vector_store,

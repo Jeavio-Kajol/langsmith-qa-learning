@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langsmith import Client, evaluate
 
-from day8_rag_app import (
+from rag.rag_app import (
     build_knowledge_index,
     invoke_with_retry,
     is_provider_quota_error,
@@ -26,7 +26,7 @@ load_dotenv()
 # --------------------------------------------------
 
 DATASET_NAME = "rag-golden-v1"
-EXPERIMENT_PREFIX = "day10-rag-eval-fixed"
+EXPERIMENT_PREFIX = "rag-quality-eval"
 
 JUDGE_LLM = ChatGroq(
     model=os.getenv("GROQ_JUDGE_MODEL", os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")),
@@ -542,7 +542,7 @@ def main(dataset_name=DATASET_NAME, limit=None, config=None):
     # RUN LANGSMITH EVALUATION
     # --------------------------------------------------
 
-    print("\nStarting Day 10 RAG evaluation...")
+    print("\nStarting RAG quality evaluation...")
     print(f"Dataset: {dataset_name}")
     print(f"Experiment: {config.experiment_prefix}")
 
@@ -559,7 +559,7 @@ def main(dataset_name=DATASET_NAME, limit=None, config=None):
     # --------------------------------------------------
 
     print("\n" + "=" * 55)
-    print("DAY 10 EVALUATION SUMMARY")
+    print("RAG EVALUATION SUMMARY")
     print("=" * 55)
 
     metric_names = [
@@ -678,7 +678,7 @@ def main(dataset_name=DATASET_NAME, limit=None, config=None):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Day 10 RAG evaluation gate")
+    parser = argparse.ArgumentParser(description="RAG quality evaluation gate")
     parser.add_argument("--dataset", default=DATASET_NAME)
     parser.add_argument("--limit", type=int, help="Run only N examples for diagnosis")
     args = parser.parse_args()

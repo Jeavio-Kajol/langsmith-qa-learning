@@ -632,7 +632,7 @@ def upload_rag_dataset():
         dataset = client.create_dataset(
             dataset_name=dataset_name,
             description=(
-                "Human-reviewed RAG Golden Dataset - Day 9. "
+                "Human-reviewed RAG Golden Dataset. "
                 "Contains retrieval, groundedness, context relevance, "
                 "hallucination prevention, out-of-scope, ambiguity, "
                 "multi-topic, and adversarial evaluation examples."

@@ -11,7 +11,7 @@ print("API key loaded:", bool(os.getenv("LANGSMITH_API_KEY")))
 client = Client()
 
 @traceable(
-    name="day8-tracing-check",
+    name="langsmith-tracing-check",
     client=client
 )
 def test_tracing():
