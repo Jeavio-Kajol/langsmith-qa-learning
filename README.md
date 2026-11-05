@@ -158,8 +158,13 @@ The pipeline reports context recall, context precision, faithfulness,
 hallucination rate, no-answer rate, and answer relevance. Each metric must
 meet its individual threshold in `rag/rag_eval_runner.py`. Missing scores,
 generation errors, judge errors, and exhausted quota fail the gate with
-exit code 1. Short-term rate limits retry; daily quota exhaustion stops
-further model calls. Do not lower thresholds to hide provider errors.
+exit code 1. Rate limits, including daily token/request limits, retry when
+Groq supplies a recovery delay (`Retry-After` or `Please try again in ...`).
+Retries are limited to five attempts and five minutes of total waiting per
+model call. Short-term limits without a delay use incremental backoff.
+Hard quota/billing errors, daily limits without a recovery delay, and delays
+beyond the wait budget stop further model calls and fail the gate.
+Do not lower thresholds to hide provider errors.
 
 `python -m rag.rag_app` starts the active interactive RAG application.
 
