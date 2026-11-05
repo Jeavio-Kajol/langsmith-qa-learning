@@ -13,14 +13,14 @@ All active LLM calls remain on Groq; no OpenAI API key is required to run them.
 
 | Requirement | Current Evidence / Remaining Work |
 | --- | --- |
-| Day 6: traced chat | Implemented, including tags and session metadata. Verify UI filtering, run comparisons, and a human feedback score in LangSmith. |
-| Day 7: two free evaluators and an AI judge | Implemented; good/bad/edge keyword examples tested offline. Human review of evaluator logic and live experiment failure analysis still need evidence. |
-| Day 8: traced RAG and manual matrix | Indexing, retrieval, generation, input bounds, system instructions, and an interactive entry point are implemented. Run and record the six manual scenarios for Chat and RAG in your team's chosen test record. Oversized input is rejected safely, not silently truncated. |
-| Day 9: Chat 30+ and RAG 50+ | Local definitions contain 30 Chat and 56 RAG examples with uploaders. Confirm cloud counts, human review of every reference, and the approved v1 dataset in LangSmith. A verification flag alone is not proof of review. |
-| Day 10: reusable runner and core checks | `EvalConfig` and `RAGEvalRunner` are implemented. Four core callbacks cover recall, faithfulness, hallucination, and relevance, plus a refusal callback. Precision is returned with faithfulness; one shared AI judgment per example supplies four scores. |
-| Day 10: quality gate | Strict plan targets use `>` for higher-is-better metrics and `<` for hallucinations. Missing data, provider/judge/target errors, and diagnostic-only subsets cannot produce a full CI pass. 35 offline tests pass; live quality is not yet verified. |
-| Day 10: dashboards and PR blocking | Workflow exists. Configure/verify LangSmith dashboards and metric alerts, and require the GitHub checks in branch protection. A failing job alone does not block merging. |
-| Day 10: regression agreement | Proposed policy is below. Team approval, a passing baseline, and selection of the critical smoke cases remain outstanding. Automated relative-baseline gates are not implemented. |
+| traced chat | Implemented, including tags and session metadata. Verify UI filtering, run comparisons, and a human feedback score in LangSmith. |
+| two free evaluators and an AI judge | Implemented; good/bad/edge keyword examples tested offline. Human review of evaluator logic and live experiment failure analysis still need evidence. |
+| traced RAG and manual matrix | Indexing, retrieval, generation, input bounds, system instructions, and an interactive entry point are implemented. Run and record the six manual scenarios for Chat and RAG in your team's chosen test record. Oversized input is rejected safely, not silently truncated. |
+| Chat 30+ and RAG 50+ | Local definitions contain 30 Chat and 56 RAG examples with uploaders. Confirm cloud counts, human review of every reference, and the approved v1 dataset in LangSmith. A verification flag alone is not proof of review. |
+| reusable runner and core checks | `EvalConfig` and `RAGEvalRunner` are implemented. Four core callbacks cover recall, faithfulness, hallucination, and relevance, plus a refusal callback. Precision is returned with faithfulness; one shared AI judgment per example supplies four scores. |
+| quality gate | Strict plan targets use `>` for higher-is-better metrics and `<` for hallucinations. Missing data, provider/judge/target errors, and diagnostic-only subsets cannot produce a full CI pass. 35 offline tests pass; live quality is not yet verified. |
+| dashboards and PR blocking | Workflow exists. Configure/verify LangSmith dashboards and metric alerts, and require the GitHub checks in branch protection. A failing job alone does not block merging. |
+| regression agreement | Proposed policy is below. Team approval, a passing baseline, and selection of the critical smoke cases remain outstanding. Automated relative-baseline gates are not implemented. |
 
 The framework's core structure is in place, but the complete Phase 2 deliverables
 cannot be marked verified from offline tests alone. No paid evaluations or
@@ -56,11 +56,11 @@ they do not start an application. Run commands from the project root using
 
 | Learning Stage | Files | What It Adds |
 | --- | --- | --- |
-| Day 6: direct chat and tracing | [chat/chat_app.py](chat/chat_app.py), [tools/check_langsmith_tracing.py](tools/check_langsmith_tracing.py) | Ask the LLM directly; inspect the request in LangSmith. |
-| Day 7: starter evaluation | [chat/chat_eval_runner.py](chat/chat_eval_runner.py) | Score chat answers with keyword checks and an AI judge. |
-| Day 8: knowledge-grounded answers | [rag/rag_index.py](rag/rag_index.py), [rag/rag_app.py](rag/rag_app.py) | Search our QA notes before generating an answer. |
-| Day 9: reviewed test questions | [chat/upload_chat_dataset.py](chat/upload_chat_dataset.py), [rag/upload_rag_dataset.py](rag/upload_rag_dataset.py) | Define and upload separate Chat and RAG datasets. |
-| Day 10: repeatable quality gate | [rag/rag_eval_runner.py](rag/rag_eval_runner.py), [rag/test_rag_eval_runner.py](rag/test_rag_eval_runner.py) | Run RAG evaluations, enforce thresholds, and test the checking code. |
+| direct chat and tracing | [chat/chat_app.py](chat/chat_app.py), [tools/check_langsmith_tracing.py](tools/check_langsmith_tracing.py) | Ask the LLM directly; inspect the request in LangSmith. |
+| starter evaluation | [chat/chat_eval_runner.py](chat/chat_eval_runner.py) | Score chat answers with keyword checks and an AI judge. |
+| knowledge-grounded answers | [rag/rag_index.py](rag/rag_index.py), [rag/rag_app.py](rag/rag_app.py) | Search our QA notes before generating an answer. |
+| reviewed test questions | [chat/upload_chat_dataset.py](chat/upload_chat_dataset.py), [rag/upload_rag_dataset.py](rag/upload_rag_dataset.py) | Define and upload separate Chat and RAG datasets. |
+| repeatable quality gate | [rag/rag_eval_runner.py](rag/rag_eval_runner.py), [rag/test_rag_eval_runner.py](rag/test_rag_eval_runner.py) | Run RAG evaluations, enforce thresholds, and test the checking code. |
 
 Active path: `rag/rag_eval_runner.py` calls `rag/rag_app.py`, which uses `rag/rag_index.py`
 to search [documents/qa_knowledge.txt](documents/qa_knowledge.txt).
@@ -158,13 +158,8 @@ The pipeline reports context recall, context precision, faithfulness,
 hallucination rate, no-answer rate, and answer relevance. Each metric must
 meet its individual threshold in `rag/rag_eval_runner.py`. Missing scores,
 generation errors, judge errors, and exhausted quota fail the gate with
-exit code 1. Rate limits, including daily token/request limits, retry when
-Groq supplies a recovery delay (`Retry-After` or `Please try again in ...`).
-Retries are limited to five attempts and five minutes of total waiting per
-model call. Short-term limits without a delay use incremental backoff.
-Hard quota/billing errors, daily limits without a recovery delay, and delays
-beyond the wait budget stop further model calls and fail the gate.
-Do not lower thresholds to hide provider errors.
+exit code 1. Short-term rate limits retry; daily quota exhaustion stops
+further model calls. Do not lower thresholds to hide provider errors.
 
 `python -m rag.rag_app` starts the active interactive RAG application.
 
@@ -233,6 +228,6 @@ thresholds. Monitor provider failures separately from quality regressions.
 Dashboards and alerts require configuration in your LangSmith account;
 they are not provisioned by this repository.
 
-Day 10 is complete only after the full evaluation meets its thresholds,
+Framework verification is complete only after the full evaluation meets its thresholds,
 the workflow runs successfully on GitHub, required checks protect `main`,
 monitoring is configured, and the team has reviewed the regression policy.
