@@ -34,7 +34,7 @@ jobs:
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -r requirements.txt
       - name: Run offline regression tests
-        run: python -m unittest test_day10_eval_runner -v
+        run: python -m unittest rag.test_rag_eval_runner -v
 
   rag-quality-gate:
     name: RAG Quality Gate
@@ -46,7 +46,7 @@ jobs:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
       LANGSMITH_TRACING: "true"
-      LANGSMITH_PROJECT: qa-learning-day10-ci
+      LANGSMITH_PROJECT: qa-learning-ci
       GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
       GROQ_JUDGE_MODEL: ${{ vars.GROQ_JUDGE_MODEL || vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
     steps:
@@ -72,7 +72,7 @@ jobs:
           python -m pip install -r requirements.txt
       - name: Evaluate the full golden dataset
         shell: bash
-        run: python -u day10_eval_runner.py 2>&1 | tee rag-evaluation.log
+        run: python -u -m rag.rag_eval_runner 2>&1 | tee rag-evaluation.log
       - name: Upload evaluation log
         if: always()
         uses: actions/upload-artifact@v4
