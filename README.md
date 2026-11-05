@@ -15,7 +15,7 @@ All active LLM calls remain on Groq; no OpenAI API key is required to run them.
 | --- | --- |
 | Day 6: traced chat | Implemented, including tags and session metadata. Verify UI filtering, run comparisons, and a human feedback score in LangSmith. |
 | Day 7: two free evaluators and an AI judge | Implemented; good/bad/edge keyword examples tested offline. Human review of evaluator logic and live experiment failure analysis still need evidence. |
-| Day 8: traced RAG and manual matrix | Indexing, retrieval, generation, input bounds, system instructions, and an interactive entry point are implemented. The manual report is blank; run and record the six scenarios for Chat and RAG. Oversized input is rejected safely, not silently truncated. |
+| Day 8: traced RAG and manual matrix | Indexing, retrieval, generation, input bounds, system instructions, and an interactive entry point are implemented. Run and record the six manual scenarios for Chat and RAG in your team's chosen test record. Oversized input is rejected safely, not silently truncated. |
 | Day 9: Chat 30+ and RAG 50+ | Local definitions contain 30 Chat and 56 RAG examples with uploaders. Confirm cloud counts, human review of every reference, and the approved v1 dataset in LangSmith. A verification flag alone is not proof of review. |
 | Day 10: reusable runner and core checks | `EvalConfig` and `RAGEvalRunner` are implemented. Four core callbacks cover recall, faithfulness, hallucination, and relevance, plus a refusal callback. Precision is returned with faithfulness; one shared AI judgment per example supplies four scores. |
 | Day 10: quality gate | Strict plan targets use `>` for higher-is-better metrics and `<` for hallucinations. Missing data, provider/judge/target errors, and diagnostic-only subsets cannot produce a full CI pass. 35 offline tests pass; live quality is not yet verified. |
@@ -65,8 +65,6 @@ they do not start an application. Run commands from the project root using
 Active path: `rag/rag_eval_runner.py` calls `rag/rag_app.py`, which uses `rag/rag_index.py`
 to search [documents/qa_knowledge.txt](documents/qa_knowledge.txt).
 The unused duplicate RAG backup has been removed.
-[manual_test_report.md](manual_test_report.md) is a blank, human-written test
-record, not code or an automatically generated report.
 
 ### How the Chat Files Relate
 
@@ -102,9 +100,8 @@ The test dataset is not a knowledge source: the question goes to the chatbot,
 and the expected keywords stay on the checking side. RAG is different because
 it additionally retrieves QA notes and sends them to the model before answering.
 
-## Manual Test Report
+## Manual Checks
 
-No script creates or fills [manual_test_report.md](manual_test_report.md).
 Start each application separately to perform the manual checks:
 
 ```powershell
@@ -115,8 +112,9 @@ python -m rag.rag_app
 In each app, try a supported question, an out-of-domain question, an ambiguous
 question, an adversarial instruction, empty input, and a long question. Type
 `exit` to close each app. Write the input, expected behavior, observed answer,
-and your pass/fail decision in the report. Model requests use Groq quota.
-The evaluation runner saves automated results in LangSmith, not in this file.
+and your pass/fail decision in your team's chosen test record. Model requests
+use Groq quota. The evaluation runner saves automated results in LangSmith;
+it does not generate a manual report.
 
 ## Local Setup
 
