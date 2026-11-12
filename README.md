@@ -100,6 +100,21 @@ The test dataset is not a knowledge source: the question goes to the chatbot,
 and the expected keywords stay on the checking side. RAG is different because
 it additionally retrieves QA notes and sends them to the model before answering.
 
+## Document Ingestion (`ingest/`)
+
+Converts mixed-format files (resumes etc.) into one format: **Markdown + a JSON sidecar** (source, detected format, method, page count, SHA-256, metadata, warnings). Format is detected from file contents, not the extension.
+
+```powershell
+python -m ingest.convert resumes\ --out converted      # file or folder
+python -m ingest.convert scan.heic --no-vision          # disable Groq vision fallback
+python -m unittest ingest.test_ingest -v                # offline tests (incl. DeepEval fidelity metric)
+```
+
+- Supported: PDF, DOCX, XLSX, PPTX, ODT/ODS/ODP, RTF, HTML, CSV/TSV, EML, TXT, images (PNG, JPEG, HEIC, TIFF, WebP, GIF, BMP). Legacy `.doc/.xls/.ppt` need LibreOffice (`soffice`) on PATH; otherwise a clear error is raised.
+- Images and scanned PDF pages: RapidOCR, then Tesseract, then a Groq vision model (`GROQ_VISION_MODEL`, needs `GROQ_API_KEY`). If no engine can read the image, the file converts with a warning and empty text rather than crashing.
+- Tracing: OpenTelemetry spans (`ingest.convert_file`). Set `PHOENIX_COLLECTOR_ENDPOINT` (e.g. `http://localhost:6006`) to view them in Phoenix (Arize), `OTEL_EXPORTER_OTLP_ENDPOINT` for any OTLP collector, or `INGEST_OTEL_CONSOLE=1`.
+- Verification status: offline tests pass with generated fixtures. Verified live: local OCR (Tesseract) on real PNG/JPEG/HEIC images, the Groq vision call (`qwen/qwen3.8-27b`), and trace export to a local Phoenix server. LibreOffice conversion of real `.doc` files was not exercised (LibreOffice not installed on the test machine).
+
 ## Manual Checks
 
 Start each application separately to perform the manual checks:
@@ -229,5 +244,7 @@ Dashboards and alerts require configuration in your LangSmith account;
 they are not provisioned by this repository.
 
 Framework verification is complete only after the full evaluation meets its thresholds,
+
+
 the workflow runs successfully on GitHub, required checks protect `main`,
 monitoring is configured, and the team has reviewed the regression policy.
