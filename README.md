@@ -115,6 +115,63 @@ python -m unittest ingest.test_ingest -v                # offline tests (incl. D
 - Tracing: OpenTelemetry spans (`ingest.convert_file`). Set `PHOENIX_COLLECTOR_ENDPOINT` (e.g. `http://localhost:6006`) to view them in Phoenix (Arize), `OTEL_EXPORTER_OTLP_ENDPOINT` for any OTLP collector, or `INGEST_OTEL_CONSOLE=1`.
 - Verification status: offline tests pass with generated fixtures. Verified live: local OCR (Tesseract) on real PNG/JPEG/HEIC images, the Groq vision call (`qwen/qwen3.8-27b`), and trace export to a local Phoenix server. LibreOffice conversion of real `.doc` files was not exercised (LibreOffice not installed on the test machine).
 
+## Agents (`agents/`)
+
+### Judge agent
+
+A LangGraph workflow (prepare → score → verify → publish) that scores a RAG answer for faithfulness, hallucination rate, context precision and answer relevance. The Groq judge only labels each claim and context chunk; the numbers are computed in code. Invalid judge output is retried once, then reported as a failure. Inputs over the size limit are rejected, not truncated. Provider quota exhaustion stops further model calls. Scores are written as `agent_*` feedback so they never mix with the quality gate's own keys.
+
+```powershell
+python -m agents.judge --file items.json                                   # dry run, prints scores
+python -m agents.judge --langsmith-project <project> --limit 5 --publish-langsmith
+python -m agents.judge --file items.json --publish-phoenix                  # needs PHOENIX_COLLECTOR_ENDPOINT
+python -m unittest agents.test_judge_agent -v                              # offline tests
+```
+
+`items.json` is a list of `{"question", "answer", "contexts": [...], "run_id"?, "span_id"?}`. `run_id` is a LangSmith run, `span_id` a Phoenix span. Exit code is 1 if any item fails to score or publish.
+
+Verification status: offline tests pass. Verified live: Groq scoring (faithful vs. fabricated answers scored as expected), LangSmith feedback written to a real run, Phoenix annotations written to a real span on a local server. The judge is not part of the quality gate and its scores are not thresholded. `client.list_runs` is deprecated in LangSmith (removal after Jan 2027); migrate to `client.runs.query`.
+
+### Trace agent
+
+A LangGraph workflow (diagnose → explain → verify → publish) that explains why a run went wrong. Deterministic checks find the problems (failed spans, empty retrieval or output, a leaf span using >= 60% of total time and >= 3 s, judge scores below 0.5 or hallucination above 0.5). The Groq LLM then explains the likely root cause. Its explanation is rejected unless the category is valid and every piece of evidence names a real span or check from that trace. Healthy traces are reported without any LLM call. The diagnosis is written as `agent_trace_diagnosis` feedback on the LangSmith root run, or as a note on the Phoenix root span.
+
+```powershell
+python -m agents.trace --langsmith-run <run-id> --publish-langsmith
+python -m agents.trace --langsmith-project <project> --limit 5
+python -m agents.trace --phoenix-project <project> --trace-id <id> --publish-phoenix
+python -m agents.trace --file trace.json
+python -m unittest agents.test_trace_agent -v
+```
+
+Verification status: offline tests pass. Verified live: LangSmith trace loaded, explained by Groq and written back as feedback; Phoenix trace loaded and explained by Groq, and the note insert was accepted by a local Phoenix server (Phoenix's API does not return notes, so the note text itself was not read back). Thresholds above are untuned defaults. The report agent is below; the dataset agent is not built yet.
+
+### Report agent
+
+Compares two evaluation runs (LangSmith experiments or JSON files) and flags regressions. All numbers and flags come from code: a metric is a regression if it gets worse by more than 0.05 (`hallucination_rate` is lower-is-better), or if it crosses the quality-gate threshold from pass to fail. Examples whose score worsened by 0.3 or more are listed, and baseline examples missing from the candidate are reported as a coverage problem. The Groq LLM only writes a short summary, rejected if it cites metrics or examples not in the comparison (use `--no-llm` to skip it). Exit code is 1 on any regression, coverage problem or error.
+
+```powershell
+python -m agents.report --baseline <experiment> --candidate <experiment> --out reports/compare.md
+python -m agents.report --baseline-file old.json --candidate-file new.json
+python -m unittest agents.test_report_agent -v
+```
+
+JSON format: `{"name": "v1", "examples": {"<example id>": {"faithfulness": 1.0, ...}}}`.
+
+Verification status: offline tests pass. Verified live: Groq summary on sample files, and comparison of two real LangSmith experiments (scores read from feedback). It does not publish anywhere; it prints Markdown and optionally writes a file.
+
+### Dataset agent
+
+Drafts new RAG test questions from `documents/qa_knowledge.txt` for a human to review. The Groq LLM proposes questions; code keeps a candidate only if every keyword and context phrase appears in its source section, the answer's keywords appear in the answer, at least 80% of the answer's content words come from the source, and the question is not a near-duplicate of an existing one (read from `rag-golden-v1` and the candidates dataset). Drafts are written with `"approved": false`; nothing is uploaded until a human sets `approved` to `true` and runs the upload. Approved examples go to a separate dataset (`rag-golden-candidates-v1`, override with `--dataset`), marked `human_verified`, never directly into the quality-gate dataset. Only answerable categories are drafted (retrieval, context relevance, grounded, multi-topic); out-of-scope, ambiguous and adversarial cases still need to be written by hand. Drafting refuses to overwrite an existing file so approvals are not lost.
+
+```powershell
+python -m agents.dataset --out datasets/candidates.json          # draft; add --per-section N --multi N --offline
+python -m agents.dataset --upload datasets/candidates.json       # upload approved=true examples only
+python -m unittest agents.test_dataset_agent -v
+```
+
+Verification status: offline tests pass. Verified live: Groq drafted 11 examples that passed all checks, and approved examples were uploaded to LangSmith (human_verified metadata, re-upload skipped as duplicates). Answer quality is only checked mechanically, so a human must still read each draft.
+
 ## Manual Checks
 
 Start each application separately to perform the manual checks:
