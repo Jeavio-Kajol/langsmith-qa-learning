@@ -1,0 +1,15 @@
+Marcus Allen
+Contact: marcus.allen@example.org  /  (415) 555-0132  /  Austin, TX
+
+Experience
+
+Acme Robotics - QA Automation Lead (03/2019 to 11/2023)
+- Led a team of 5 testers and introduced Playwright-based UI automation
+- Cut regression time from 3 days to 4 hours
+
+BrightPath Software - Test Engineer (2015 - 2019)
+- Wrote Selenium and PyTest suites for a healthcare web portal
+
+Skills: Playwright, Selenium, PyTest, Jenkins, SQL
+
+Education: BSc Information Systems - University of Texas at Austin (2015)

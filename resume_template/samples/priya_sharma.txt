@@ -1,0 +1,19 @@
+PRIYA SHARMA
+Pune, India | priya.sharma@example.com | +91 98765 43210
+
+PROFILE
+Backend engineer with 6 years of experience building payment APIs.
+
+TECHNICAL SKILLS
+Python, Django, PostgreSQL, Docker, AWS
+
+WORK HISTORY
+Senior Software Engineer, Finlytics Pvt Ltd            Jan 2021 - Present
+ * Designed a ledger service handling 2M transactions per day
+ * Mentored four junior engineers
+
+Software Engineer, CodeNest Technologies               Jun 2018 - Dec 2020
+ * Built REST APIs for the merchant onboarding flow
+
+EDUCATION
+B.Tech in Computer Science, College of Engineering Pune, 2018
