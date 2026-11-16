@@ -100,26 +100,34 @@ The test dataset is not a knowledge source: the question goes to the chatbot,
 and the expected keywords stay on the checking side. RAG is different because
 it additionally retrieves QA notes and sends them to the model before answering.
 
-## Document Ingestion (`ingest/`)
+## Resume-to-Template POC (`resume_template/`)
 
-Converts mixed-format files (resumes etc.) into one format: **Markdown + a JSON sidecar** (source, detected format, method, page count, SHA-256, metadata, warnings). Format is detected from file contents, not the extension.
+The dev team's converter (many resumes in different layouts -> one common template) is not available yet. This POC stands in for it so the **testing approach** can be built and proven now. The QA code is the deliverable; the converter is replaceable.
 
 ```powershell
-python -m ingest.convert resumes\ --out converted      # file or folder
-python -m ingest.convert scan.heic --no-vision          # disable Groq vision fallback
-python -m unittest ingest.test_ingest -v                # offline tests (incl. DeepEval fidelity metric)
+python -m resume_template.converter resume_template\samples --out converted   # convert resumes (Groq)
+python -m resume_template.evaluate                                             # convert + score every sample, all formats (live, uses Groq)
+python -m resume_template.evaluate --judge                                     # also run the DeepEval LLM judge (more Groq calls)
+python -m unittest resume_template.test_resume_template -v                     # offline, no network
+python -m resume_template.make_samples                                         # regenerate .docx/.pdf samples from the .txt ones
 ```
 
-- Supported: PDF, DOCX, XLSX, PPTX, ODT/ODS/ODP, RTF, HTML, CSV/TSV, EML, TXT, images (PNG, JPEG, HEIC, TIFF, WebP, GIF, BMP). Legacy `.doc/.xls/.ppt` need LibreOffice (`soffice`) on PATH; otherwise a clear error is raised.
-- Images and scanned PDF pages: RapidOCR, then Tesseract, then a Groq vision model (`GROQ_VISION_MODEL`, needs `GROQ_API_KEY`). If no engine can read the image, the file converts with a warning and empty text rather than crashing.
-- Tracing: OpenTelemetry spans (`ingest.convert_file`). Set `PHOENIX_COLLECTOR_ENDPOINT` (e.g. `http://localhost:6006`) to view them in Phoenix (Arize), `OTEL_EXPORTER_OTLP_ENDPOINT` for any OTLP collector, or `INGEST_OTEL_CONSOLE=1`.
-- Verification status: offline tests pass with generated fixtures. Verified live: local OCR (Tesseract) on real PNG/JPEG/HEIC images, the Groq vision call (`qwen/qwen3.8-27b`), and trace export to a local Phoenix server. LibreOffice conversion of real `.doc` files was not exercised (LibreOffice not installed on the test machine).
+- `loader.py`: reads `.pdf`, `.docx`, `.doc`, `.txt`, `.md`. `.doc` is converted through LibreOffice (`soffice` on PATH); without it a clear error is raised. Files with no extractable text (scans) are rejected, not silently converted to an empty resume.
+- `template.py`: the target template (name, contact, summary, skills, experience, education), date rule (`YYYY-MM`, `YYYY`, or `Present`) and a deterministic Markdown renderer with fixed section order.
+- `converter.py`: LLM conversion (Groq, JSON output, retries, >10000 chars rejected rather than truncated). Swap `convert_text` for the dev team's converter when available; the checks only need a `ResumeTemplate`.
+- `checks.py`: deterministic verification. Universal (no expected answer needed): **structure**, **required_fields**, **formats**, **grounding** (every name/company/skill/email/phone must appear in the source, so nothing is invented), **completeness** (contact details not dropped), **experience_order**. Golden checks compare against `samples/golden.json`: contact, jobs (company/title/dates), skill recall >= 0.8, education.
+- `judge.py` (DeepEval): a GEval LLM judge on Groq for the fuzzy part only, whether summary and bullets keep the source's meaning. Optional (`--judge`) because it costs extra calls; facts are checked deterministically instead.
+- OpenTelemetry/Phoenix: `evaluate` emits one `resume_template.convert` span per file (format, pass/fail, failed checks). Set `PHOENIX_COLLECTOR_ENDPOINT` to view them in Phoenix, or `AGENTS_OTEL_CONSOLE=1` to print them.
+- `samples/`: three resumes in different layouts (sectioned, one-line, narrative prose), each as `.txt`, `.docx` and `.pdf`, plus hand-written expected results.
 
+How to grow the test set: add a resume file and a `golden.json` entry with the same stem; include hard cases (two-column layouts, tables, missing sections, non-English, current roles, employment gaps, very long resumes, scanned PDFs).
+
+Verification status: offline tests pass (including real generated `.docx` and `.pdf` files). Live Groq run (`openai/gpt-oss-20b`) on all 9 sample files passed every deterministic check and the DeepEval judge; the judge also scored 0.0 on a deliberately tampered conversion. Spans were verified through the console exporter only; export to a Phoenix server was not exercised for this POC. `.doc` reading is not verified (LibreOffice is not installed on the test machine). The samples are machine-generated clean files, not real-world resumes, so this is not a quality baseline for the real converter.
 ## Agents (`agents/`)
 
 ### Judge agent
 
-A LangGraph workflow (prepare → score → verify → publish) that scores a RAG answer for faithfulness, hallucination rate, context precision and answer relevance. The Groq judge only labels each claim and context chunk; the numbers are computed in code. Invalid judge output is retried once, then reported as a failure. Inputs over the size limit are rejected, not truncated. Provider quota exhaustion stops further model calls. Scores are written as `agent_*` feedback so they never mix with the quality gate's own keys.
+A LangGraph workflow (prepare Ã¢â€ â€™ score Ã¢â€ â€™ verify Ã¢â€ â€™ publish) that scores a RAG answer for faithfulness, hallucination rate, context precision and answer relevance. The Groq judge only labels each claim and context chunk; the numbers are computed in code. Invalid judge output is retried once, then reported as a failure. Inputs over the size limit are rejected, not truncated. Provider quota exhaustion stops further model calls. Scores are written as `agent_*` feedback so they never mix with the quality gate's own keys.
 
 ```powershell
 python -m agents.judge --file items.json                                   # dry run, prints scores
@@ -134,7 +142,7 @@ Verification status: offline tests pass. Verified live: Groq scoring (faithful v
 
 ### Trace agent
 
-A LangGraph workflow (diagnose → explain → verify → publish) that explains why a run went wrong. Deterministic checks find the problems (failed spans, empty retrieval or output, a leaf span using >= 60% of total time and >= 3 s, judge scores below 0.5 or hallucination above 0.5). The Groq LLM then explains the likely root cause. Its explanation is rejected unless the category is valid and every piece of evidence names a real span or check from that trace. Healthy traces are reported without any LLM call. The diagnosis is written as `agent_trace_diagnosis` feedback on the LangSmith root run, or as a note on the Phoenix root span.
+A LangGraph workflow (diagnose Ã¢â€ â€™ explain Ã¢â€ â€™ verify Ã¢â€ â€™ publish) that explains why a run went wrong. Deterministic checks find the problems (failed spans, empty retrieval or output, a leaf span using >= 60% of total time and >= 3 s, judge scores below 0.5 or hallucination above 0.5). The Groq LLM then explains the likely root cause. Its explanation is rejected unless the category is valid and every piece of evidence names a real span or check from that trace. Healthy traces are reported without any LLM call. The diagnosis is written as `agent_trace_diagnosis` feedback on the LangSmith root run, or as a note on the Phoenix root span.
 
 ```powershell
 python -m agents.trace --langsmith-run <run-id> --publish-langsmith

@@ -18,7 +18,7 @@ from agents.dataset_agent import (
     DEFAULT_UPLOAD_DATASET, KNOWLEDGE_FILE, DatasetAgent, assign_ids, candidates_to_json, load_approved,
     load_sections, upload_approved,
 )
-from ingest.telemetry import setup_tracing
+from agents.telemetry import setup_tracing
 
 EXISTING_DATASETS = ("rag-golden-v1", DEFAULT_UPLOAD_DATASET)
 

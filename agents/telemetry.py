@@ -9,10 +9,10 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 _configured = False
 
 
-def setup_tracing(service_name: str = "document-ingest") -> None:
+def setup_tracing(service_name: str = "agents") -> None:
     """Idempotent. Exporter choice (env):
     PHOENIX_COLLECTOR_ENDPOINT -> Phoenix; OTEL_EXPORTER_OTLP_ENDPOINT -> OTLP;
-    INGEST_OTEL_CONSOLE=1 -> console. Otherwise spans are created but not exported."""
+    AGENTS_OTEL_CONSOLE=1 -> console. Otherwise spans are created but not exported."""
     global _configured
     if _configured:
         return
@@ -34,7 +34,7 @@ def setup_tracing(service_name: str = "document-ingest") -> None:
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
         provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
-    if os.getenv("INGEST_OTEL_CONSOLE") == "1":
+    if os.getenv("AGENTS_OTEL_CONSOLE") == "1":
         provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
     trace.set_tracer_provider(provider)
 
@@ -45,4 +45,4 @@ def _phoenix_traces_url(endpoint: str) -> str:
 
 
 def get_tracer():
-    return trace.get_tracer("ingest")
+    return trace.get_tracer("agents")

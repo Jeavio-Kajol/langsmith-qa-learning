@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from agents.publishers import TraceLangSmithPublisher, TracePhoenixPublisher
 from agents.trace_agent import TraceAgent
 from agents.trace_model import trace_from_file, trace_from_langsmith, trace_from_phoenix
-from ingest.telemetry import setup_tracing
+from agents.telemetry import setup_tracing
 
 DEFAULT_RUN_NAME = "rag-question-answering"
 

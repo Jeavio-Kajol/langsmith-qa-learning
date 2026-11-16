@@ -13,7 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from agents.report_agent import ReportAgent, render_markdown, results_from_file, results_from_langsmith
-from ingest.telemetry import setup_tracing
+from agents.telemetry import setup_tracing
 
 
 def main(argv=None) -> int:
