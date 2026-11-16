@@ -1,6 +1,4 @@
-import math
 import os
-import re
 import time
 
 from dotenv import load_dotenv
@@ -38,69 +36,34 @@ def is_provider_quota_error(error):
     ))
 
 
-def provider_retry_delay(error):
-    """Read Groq's recovery delay without guessing when quota will recover."""
-
-    response = getattr(error, "response", None)
-    headers = getattr(response, "headers", {}) or {}
-    try:
-        seconds = float(headers.get("retry-after", ""))
-        if math.isfinite(seconds) and seconds >= 0:
-            return seconds
-    except (TypeError, ValueError):
-        pass
-
-    match = re.search(
-        r"please try again in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?\.",
-        str(error).lower(),
-    )
-    if match and any(match.groups()):
-        hours, minutes, seconds = (float(value or 0) for value in match.groups())
-        return math.ceil(hours * 3600 + minutes * 60 + seconds)
-    return None
-
-
 def invoke_with_retry(model, prompt, max_attempts=5):
-    """Retry recoverable rate limits with at most five minutes of waiting."""
+    """Retry temporary rate limits, but stop on exhausted provider quota."""
 
-    remaining_wait = 300
     for attempt in range(max_attempts):
         try:
             return model.invoke(prompt)
 
         except Exception as error:
-            error_message = str(error).lower()
-            wait_seconds = provider_retry_delay(error)
-            quota_error = is_provider_quota_error(error)
-            hard_quota = any(marker in error_message for marker in (
-                "insufficient_quota", "exceeded your current quota", "billing hard limit",
-            ))
-            if quota_error and (
-                hard_quota or wait_seconds is None
-                or wait_seconds > remaining_wait or attempt == max_attempts - 1
-            ):
+            if is_provider_quota_error(error):
                 raise RuntimeError(
                     "Provider quota exhausted. Check Groq usage limits "
                     "and wait for quota recovery before retrying. "
                     f"Provider details: {error}"
                 ) from error
 
+            error_message = str(error).lower()
+
             is_rate_limit = (
                 "rate limit" in error_message
                 or "429" in error_message
                 or "too many requests" in error_message
                 or "tokens per minute" in error_message
-                or quota_error
             )
 
             if not is_rate_limit or attempt == max_attempts - 1:
                 raise
 
-            if wait_seconds is None:
-                wait_seconds = 15 * (attempt + 1)
-            if wait_seconds > remaining_wait:
-                raise
-            remaining_wait -= wait_seconds
+            wait_seconds = 15 * (attempt + 1)
 
             print(
                 f"Provider rate limit reached. "

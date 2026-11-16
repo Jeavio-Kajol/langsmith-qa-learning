@@ -1,0 +1,14 @@
+Aisha Khan - Data Analyst
+aisha.khan@example.net | London, UK
+
+Summary: Analyst who turns messy operational data into dashboards that managers actually use.
+
+Key skills
+Excel; Power BI; SQL; Python (pandas)
+
+Career
+Since September 2022 I have worked at Northwind Retail as a Data Analyst, where I automated the weekly sales report and reduced manual effort by 10 hours a week.
+Between July 2020 and August 2022 I was a Reporting Assistant at Greenfield Council, maintaining the monthly KPI pack.
+
+Qualifications
+MSc Data Science, University of Leeds, 2020

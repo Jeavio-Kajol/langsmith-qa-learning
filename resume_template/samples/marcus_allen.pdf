@@ -1,0 +1,32 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Length 667 >>
+stream
+BT /F1 10 Tf 12 TL 40 800 Td (Marcus Allen) Tj T* (Contact: marcus.allen@example.org  /  \(415\) 555-0132  /  Austin, TX) Tj T* () Tj T* (Experience) Tj T* () Tj T* (Acme Robotics - QA Automation Lead \(03/2019 to 11/2023\)) Tj T* (- Led a team of 5 testers and introduced Playwright-based UI automation) Tj T* (- Cut regression time from 3 days to 4 hours) Tj T* () Tj T* (BrightPath Software - Test Engineer \(2015 - 2019\)) Tj T* (- Wrote Selenium and PyTest suites for a healthcare web portal) Tj T* () Tj T* (Skills: Playwright, Selenium, PyTest, Jenkins, SQL) Tj T* () Tj T* (Education: BSc Information Systems - University of Texas at Austin \(2015\)) Tj T* ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000185 00000 n 
+0000000903 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1029
+%%EOF

@@ -163,78 +163,6 @@ class RAGEvalRunnerTests(unittest.TestCase):
         self.assertEqual(model.invoke.call_count, 2)
         sleep.assert_called_once_with(15)
 
-    def test_daily_rate_limit_recovers_after_provider_delay(self):
-        model = Mock()
-        model.invoke.side_effect = [
-            RuntimeError(
-                "429 Rate limit reached on tokens per day (TPD). "
-                "Please try again in 3m2.736s."
-            ),
-            "ok",
-        ]
-        with patch.object(app.time, "sleep") as sleep, redirect_stdout(io.StringIO()):
-            self.assertEqual(app.invoke_with_retry(model, "test"), "ok")
-        self.assertEqual(model.invoke.call_count, 2)
-        sleep.assert_called_once_with(183)
-
-    def test_retry_after_header_takes_precedence(self):
-        error = RuntimeError("429 tokens per minute. Please try again in 1m2s.")
-        error.response = SimpleNamespace(headers={"retry-after": "62.5"})
-        model = Mock()
-        model.invoke.side_effect = [error, "ok"]
-        with patch.object(app.time, "sleep") as sleep, redirect_stdout(io.StringIO()):
-            self.assertEqual(app.invoke_with_retry(model, "test"), "ok")
-        sleep.assert_called_once_with(62.5)
-
-    def test_quota_retries_have_total_wait_budget(self):
-        model = Mock()
-        model.invoke.side_effect = RuntimeError(
-            "429 tokens per day. Please try again in 3m2.736s."
-        )
-        with patch.object(app.time, "sleep") as sleep, redirect_stdout(io.StringIO()):
-            with self.assertRaisesRegex(RuntimeError, "Provider quota exhausted"):
-                app.invoke_with_retry(model, "test")
-        self.assertEqual(model.invoke.call_count, 2)
-        sleep.assert_called_once_with(183)
-
-    def test_unrecoverable_quota_does_not_wait(self):
-        for message in (
-            "tokens per day. Please try again in 1h2m3s.",
-            "insufficient_quota. Please try again in 1s.",
-            "billing hard limit. Please try again in 1s.",
-        ):
-            with self.subTest(message=message):
-                model = Mock()
-                model.invoke.side_effect = RuntimeError(f"429 {message}")
-                with patch.object(app.time, "sleep") as sleep:
-                    with self.assertRaisesRegex(RuntimeError, "Provider quota exhausted"):
-                        app.invoke_with_retry(model, "test")
-                model.invoke.assert_called_once_with("test")
-                sleep.assert_not_called()
-
-    def test_invalid_retry_headers_do_not_allow_unbounded_sleep(self):
-        for value in ("invalid", "nan", "inf", "-1"):
-            with self.subTest(value=value):
-                error = RuntimeError("429 requests per day")
-                error.response = SimpleNamespace(headers={"retry-after": value})
-                model = Mock()
-                model.invoke.side_effect = error
-                with patch.object(app.time, "sleep") as sleep:
-                    with self.assertRaisesRegex(RuntimeError, "Provider quota exhausted"):
-                        app.invoke_with_retry(model, "test")
-                sleep.assert_not_called()
-
-    def test_rate_limit_retries_stop_at_max_attempts(self):
-        model = Mock()
-        model.invoke.side_effect = RuntimeError(
-            "429 tokens per day. Please try again in 0s."
-        )
-        with patch.object(app.time, "sleep") as sleep, redirect_stdout(io.StringIO()):
-            with self.assertRaisesRegex(RuntimeError, "Provider quota exhausted"):
-                app.invoke_with_retry(model, "test", max_attempts=2)
-        self.assertEqual(model.invoke.call_count, 2)
-        sleep.assert_called_once_with(0)
-
     def test_non_rate_error_does_not_retry(self):
         model = Mock()
         model.invoke.side_effect = ValueError("invalid request")
@@ -250,23 +178,6 @@ class RAGEvalRunnerTests(unittest.TestCase):
         self.assertEqual(result["key"], "judge_error")
         self.assertTrue(runner.judge_errors)
         invoke.assert_not_called()
-
-    def test_judge_recovers_daily_limit_without_latching_provider_error(self):
-        response = SimpleNamespace(content='{"context_precision": 1, "faithfulness": 1, "hallucination_rate": 0, "answer_relevance": 1}')
-        with patch.object(runner, "JUDGE_LLM") as model, patch.object(app.time, "sleep") as sleep, redirect_stdout(io.StringIO()):
-            model.invoke.side_effect = [
-                RuntimeError("429 tokens per day. Please try again in 3m2.736s."),
-                response,
-            ]
-            results = runner.combined_llm_judge_evaluator(
-                {"question": "test"}, {"answer": "test"}, {},
-            )
-        self.assertEqual(len(results), 4)
-        self.assertEqual(model.invoke.call_count, 2)
-        sleep.assert_called_once_with(183)
-        self.assertIsNone(runner.provider_error)
-        self.assertFalse(runner.judge_errors)
-        self.assertEqual(runner.metric_scores["faithfulness"], [1.0])
 
     def test_refusal_with_fabricated_answer_does_not_pass(self):
         example = SimpleNamespace(metadata={"category": "out_of_scope"})
