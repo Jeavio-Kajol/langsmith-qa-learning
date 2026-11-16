@@ -15,7 +15,7 @@ from typing import Optional, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from agents.telemetry import get_tracer
+from ingest.telemetry import get_tracer
 
 MAX_FIELD_CHARS = 10000
 MAX_TOTAL_CHARS = 40000

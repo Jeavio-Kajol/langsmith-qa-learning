@@ -15,7 +15,7 @@ from langgraph.graph import END, StateGraph
 
 from agents.judge_agent import build_judge_llm, extract_json, invoke_llm, is_provider_quota_error
 from agents.trace_model import Trace
-from agents.telemetry import get_tracer
+from ingest.telemetry import get_tracer
 
 CATEGORIES = ("retrieval", "generation", "provider", "performance", "other")
 CONFIDENCE = ("low", "medium", "high")

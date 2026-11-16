@@ -18,7 +18,7 @@ from typing import Optional, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agents.judge_agent import build_judge_llm, extract_json, invoke_llm, is_provider_quota_error
-from agents.telemetry import get_tracer
+from ingest.telemetry import get_tracer
 
 KNOWLEDGE_FILE = "documents/qa_knowledge.txt"
 CATEGORIES = ("retrieval_accuracy", "context_relevance", "grounded_answer", "multi_topic_retrieval")

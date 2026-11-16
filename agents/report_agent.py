@@ -15,7 +15,7 @@ from typing import Optional, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agents.judge_agent import build_judge_llm, extract_json, invoke_llm, is_provider_quota_error
-from agents.telemetry import get_tracer
+from ingest.telemetry import get_tracer
 
 LOWER_IS_BETTER = ("hallucination_rate",)
 METRIC_TOLERANCE = 0.05  # a metric mean worse by more than this is a regression

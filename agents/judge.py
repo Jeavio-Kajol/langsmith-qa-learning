@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 from agents.judge_agent import JudgeAgent, JudgeItem
 from agents.publishers import LangSmithPublisher, PhoenixPublisher
-from agents.telemetry import setup_tracing
+from ingest.telemetry import setup_tracing
 
 DEFAULT_RUN_NAME = "rag-question-answering"
 
